@@ -1,0 +1,60 @@
+name: Wisely C3 AI V2 firmware
+
+on:
+  push:
+    branches:
+      - master
+      - "agent/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Static project checks
+        run: python3 tools/verify_project.py
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v6.0.2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mark checkout safe for git in container
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Prepare pinned XiaoZhi source
+        shell: bash
+        run: python3 tools/prepare_firmware.py --workdir .work/xiaozhi-esp32 --clean
+
+      - name: Build Wisely C3 AI V2
+        shell: bash
+        run: |
+          source "$IDF_PATH/export.sh"
+          cd .work/xiaozhi-esp32
+          python scripts/build.py wisely/c3-ai-v2 \
+            --name wisely-c3-ai-v2 \
+            --language zh-CN \
+            --wake-word nihaoxiaozhi \
+            --zip
+
+      - name: Upload merged firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: wisely-c3-ai-v2-${{ github.sha }}
+          path: |
+            .work/xiaozhi-esp32/build/merged-binary.bin
+            .work/xiaozhi-esp32/releases/v2.4.2_wisely-c3-ai-v2.zip
+          if-no-files-found: error
